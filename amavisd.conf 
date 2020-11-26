@@ -1,0 +1,236 @@
+use strict;
+
+$MYHOME = '/var/lib/amavis';   # (default is '/var/amavis')
+
+$mydomain = 'localhost';
+
+# $myhostname = 'serveur.domain.tld';  # fqdn of this host, default by uname(3)
+
+$daemon_user  = 'amavis';        # (no default (undef))
+$daemon_group = 'amavis';        # (no default (undef))
+
+$TEMPBASE = $MYHOME;           # (must be set if other config vars use is)
+
+$pid_file  = "/var/run/amavis/amavisd.pid";  # (default: "$MYHOME/amavisd.pid")
+$lock_file = "/var/run/amavis/amavisd.lock"; # (default: "$MYHOME/amavisd.lock")
+
+$ENV{TMPDIR} = $TEMPBASE;       # wise to set TMPDIR, but not obligatory
+
+$max_servers  =  4;   # number of pre-forked children          (default 2)
+$max_requests = 10;   # retire a child after that many accepts (default 10)
+
+$child_timeout=5*60;  # abort child if it does not complete each task in n sec
+                      # (default: 8*60 seconds)
+
+# @bypass_virus_checks_acl = qw( . );  # uncomment to DISABLE anti-virus code
+# @bypass_spam_checks_acl  = qw( . );  # uncomment to DISABLE anti-spam code
+
+@local_domains_acl = ( ".$mydomain" );  # $mydomain and its subdomains
+
+$relayhost_is_client = 0;         # (defaults to false)
+
+$insert_received_line = 1;
+
+$unix_socketname = undef;
+
+$inet_socket_port = 10024;
+$inet_socket_bind = '127.0.0.1';
+@inet_acl = qw( 127.0.0.1 );
+
+$DO_SYSLOG = 1;
+$LOGFILE = "/var/log/amavis.log";  # (defaults to empty, no log)
+
+#$log_level = 2;                # (defaults to 0)
+
+$log_templ = '[? %#V |[? %#F |[?%#D|Not-Delivered|Passed]|BANNED name/type (%F)]|INFECTED (%V)], #
+[?%o|(?)|<%o>] -> [<%R>|,][? %i ||, quarantine %i], Message-ID: %m, Hits: %c';
+
+read_l10n_templates('en_US', '/etc/amavis');
+
+$final_virus_destiny      = D_REJECT; # (defaults to D_BOUNCE)
+$final_banned_destiny     = D_REJECT;  # (defaults to D_BOUNCE)
+$final_spam_destiny       = D_PASS;  # (defaults to D_REJECT)
+$final_bad_header_destiny = D_PASS;  # (defaults to D_PASS), D_BOUNCE suggested
+
+$viruses_that_fake_sender_re = new_RE(
+  qr'nimda|hybris|klez|bugbear|yaha|braid|sobig|fizzer|palyh|peido|holar'i,
+  qr'tanatos|lentin|bridex|mimail|trojan\.dropper|dumaru|parite|spaces'i,
+  qr'dloader|galil|gibe|swen|netwatch|bics|sbrowse|sober|rox|val(hal)?la'i,
+  qr'frethem|sircam|be?agle|tanx|mydoom|novarg|shimg|netsky|somefool|moodown'i,
+  qr'@mm|@MM',    # mass mailing viruses as labeled by f-prot and uvscan
+  qr'Worm'i,      # worms as labeled by ClamAV, Kaspersky, etc
+  [qr'^(EICAR|Joke\.|Junk\.)'i         => 0],
+  [qr'^(WM97|OF97|W95/CIH-|JS/Fort)'i  => 0],
+  [qr/.*/ => 1],  # true by default  (remove or comment-out if undesired)
+);
+
+$virus_admin = "postmaster\@$mydomain";                # due to D_DISCARD default
+
+$mailfrom_to_quarantine = '';   # override sender address with null return path
+
+$QUARANTINEDIR = '/var/lib/amavis/virusmails';
+
+$virus_quarantine_to  = 'virus-quarantine';    # traditional local quarantine
+$spam_quarantine_to = 'spam-quarantine';
+
+$X_HEADER_TAG = 'X-Virus-Scanned';        # (default: undef)
+$X_HEADER_LINE = "by $myversion (Debian) at $mydomain";
+
+$undecipherable_subject_tag = '***UNCHECKED*** ';  # undef disables it
+
+$remove_existing_x_scanned_headers = 0; # leave existing X-Virus-Scanned alone
+#$remove_existing_x_scanned_headers= 1; # remove existing headers
+                                        # (defaults to false)
+#$remove_existing_spam_headers = 0;     # leave existing X-Spam* headers alone
+$remove_existing_spam_headers  = 1;     # remove existing spam headers if
+                                        # spam scanning is enabled (default)
+
+$keep_decoded_original_re = new_RE(
+# qr'^MAIL$',   # retain full original message for virus checking (can be slow)
+  qr'^MAIL-UNDECIPHERABLE$',  # retain full mail if it contains undecipherables
+  qr'^(ASCII(?! cpio)|text|uuencoded|xxencoded|binhex)'i,
+# qr'^Zip archive data',
+);
+
+$banned_filename_re = new_RE(
+#  qr'^UNDECIPHERABLE$',  # is or contains any undecipherable components
+   qr'\.[^.]*\.(exe|vbs|pif|scr|bat|cmd|com|dll)$'i, # some double extensions
+   qr'[{}]',     # curly braces in names (serve as Class ID extensions - CLSID)
+#  qr'.\.(exe|vbs|pif|scr|bat|cmd|com)$'i,           # banned extension - basic
+#  qr'.\.(ade|adp|bas|bat|chm|cmd|com|cpl|crt|exe|hlp|hta|inf|ins|isp|js|
+#         jse|lnk|mdb|mde|msc|msi|msp|mst|pcd|pif|reg|scr|sct|shs|shb|vb|
+#         vbe|vbs|wsc|wsf|wsh)$'ix,                  # banned extension - long
+#  qr'.\.(mim|b64|bhx|hqx|xxe|uu|uue)$'i, # banned extension - WinZip vulnerab.
+#  qr'^\.(zip|lha|tnef|cab)$'i,                      # banned file(1) types
+#  qr'^\.exe$'i,                                     # banned file(1) types
+#  qr'^application/x-msdownload$'i,                  # banned MIME types
+#  qr'^application/x-msdos-program$'i,
+   qr'^message/partial$'i,  # rfc2046. this one is deadly for Outcrook
+#  qr'^message/external-body$'i, # block rfc2046
+);
+
+@lookup_sql_dsn =
+   ( ['DBI:mysql:database=postfix;host=127.0.0.1;port=3306', 'postfix', '123456'] );
+
+$sql_select_policy = 'SELECT "Y" as local FROM domains WHERE CONCAT("@",domain) IN (%k)';
+
+$sql_select_white_black_list = undef;  # undef disables SQL white/blacklisting
+
+$recipient_delimiter = '+';                # (default is '+')
+
+$replace_existing_extension = 1;        # (default is false)
+
+$localpart_is_case_sensitive = 0;        # (default is false)
+
+$blacklist_sender_re = new_RE(
+    qr'^(bulkmail|offers|cheapbenefits|earnmoney|foryou|greatcasino)@'i,
+    qr'^(investments|lose_weight_today|market\.alert|money2you|MyGreenCard)@'i,
+    qr'^(new\.tld\.registry|opt-out|opt-in|optin|saveonl|smoking2002k)@'i,
+    qr'^(specialoffer|specialoffers|stockalert|stopsnoring|wantsome)@'i,
+    qr'^(workathome|yesitsfree|your_friend|greatoffers)@'i,
+    qr'^(inkjetplanet|marketopt|MakeMoney)\d*@'i,
+);
+
+map { $whitelist_sender{lc($_)}=1 } (qw(
+  nobody@cert.org
+  owner-alert@iss.net
+  slashdot@slashdot.org
+  bugtraq@securityfocus.com
+  NTBUGTRAQ@LISTSERV.NTBUGTRAQ.COM
+  security-alerts@linuxsecurity.com
+  amavis-user-admin@lists.sourceforge.net
+  razor-users-admin@lists.sourceforge.net
+  notification-return@lists.sophos.com
+  mailman-announce-admin@python.org
+  zope-announce-admin@zope.org
+  owner-postfix-users@postfix.org
+  owner-postfix-announce@postfix.org
+  owner-sendmail-announce@lists.sendmail.org
+  sendmail-announce-request@lists.sendmail.org
+  ca+envelope@sendmail.org
+  owner-technews@postel.ACM.ORGuse strict;
+  lvs-users-admin@LinuxVirtualServer.org
+  ietf-123-owner@loki.ietf.org
+  cvs-commits-list-admin@gnome.org
+  rt-users-admin@lists.fsck.com
+  owner-announce@mnogosearch.org
+  owner-hackers@ntp.org
+  owner-bugs@ntp.org
+  clp-request@comp.nus.edu.sg
+  surveys-errors@lists.nua.ie
+  emailNews@genomeweb.com
+  owner-textbreakingnews@CNNIMAIL12.CNN.COM
+  yahoo-dev-null@yahoo-inc.com
+));
+
+$MAXLEVELS = 14;                # (default is undef, no limit)
+
+$MAXFILES = 1500;                # (default is undef, no limit)
+
+$MIN_EXPANSION_QUOTA =      100*1024;  # bytes  (default undef, not enforced)
+$MAX_EXPANSION_QUOTA = 300*1024*1024;  # bytes  (default undef, not enforced)
+$MIN_EXPANSION_FACTOR =   5;  # times original mail size  (must be specified)
+$MAX_EXPANSION_FACTOR = 500;  # times original mail size  (must be specified)
+
+$path = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin:/usr/bin:/bin';
+
+$file   = 'file';   # file(1) utility; use 3.41 or later to avoid vulnerability
+
+$gzip   = 'gzip';
+$bzip2  = 'bzip2';
+$lzop   = 'lzop';
+$uncompress = ['uncompress', 'gzip -d', 'zcat'];
+$unfreeze   = ['unfreeze', 'freeze -d', 'melt', 'fcat'];
+$arc        = ['nomarch', 'arc'];
+$unarj      = ['arj', 'unarj'];  # both can extract, arj is recommended
+$unrar      = ['rar', 'unrar'];  # both can extract, same options
+$zoo    = 'zoo';
+$lha    = 'lha';
+$cpio   = 'cpio';   # comment out if cpio does not support GNU options
+
+$sa_local_tests_only = 0;   # (default: false)
+#$sa_auto_whitelist = 1;    # turn on AWL (default: false)
+
+# Timout for SpamAssassin. This is only used if spamassassin does NOT
+# override it (which it often does if sa_local_tests_only is not true)
+$sa_timeout = 30;           # timeout in seconds for a call to SpamAssassin
+                            # (default is 30 seconds, undef disables it)
+
+# AWL (auto whitelisting), requires spamassassin 2.44 or better
+# $sa_auto_whitelist = 1;   # defaults to undef
+
+$sa_mail_body_size_limit = 150*1024;
+
+$sa_tag_level_deflt  = 3.0; # add spam info headers if at, or above that level
+$sa_tag2_level_deflt = 4.0; # add 'spam detected' headers at that level
+$sa_kill_level_deflt = $sa_tag2_level_deflt;
+
+$sa_dsn_cutoff_level = 10;
+
+$sa_spam_subject_tag = '***SPAM*** ';
+
+$first_infected_stops_scan = 1;
+
+@av_scanners = (
+
+### http://www.clamav.net/
+['Clam Antivirus-clamd',
+  \&ask_daemon, ["CONTSCAN {}\n", "/var/run/clamav/clamd.ctl"],
+  qr/\bOK$/, qr/\bFOUND$/,
+  qr/^.*?: (?!Infected Archive)(.*) FOUND$/ ],
+# NOTE: run clamd under the same user as amavisd;  match the socket
+# name (LocalSocket) in clamav.conf to the socket name in this entry
+# When running chrooted one may prefer: ["CONTSCAN {}\n","$MYHOME/clamd"],
+
+);
+
+@av_scanners_backup = (
+
+  ### http://www.clamav.net/
+  ['Clam Antivirus - clamscan', 'clamscan',
+    "--stdout --no-summary -r --tempdir=$TEMPBASE {}", [0], [1],
+    qr/^.*?: (?!Infected Archive)(.*) FOUND$/ ],
+
+);
+
+1;  # insure a defined return
